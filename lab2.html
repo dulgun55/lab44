@@ -1,0 +1,441 @@
+﻿<!DOCTYPE html>
+<html lang="mn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab 2 - AR Interactive Flow</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f172a'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='32' fill='%23f8fafc'%3EAR%3C/text%3E%3C/svg%3E" />
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background: #0d1117;
+      color: #f0f6fc;
+      overflow: hidden;
+    }
+
+    #uiPanel {
+      position: fixed;
+      right: 12px;
+      top: 12px;
+      z-index: 25;
+      width: min(360px, 92vw);
+    }
+
+    #controls {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    #controls button {
+      border: 0;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 17px;
+      cursor: pointer;
+      color: #fff;
+      font-weight: 600;
+      background: #1d4ed8;
+    }
+
+    #controls button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    #tapBtn { background: #1d4ed8; }
+    #nextBtn { background: #7c3aed; }
+
+    #status {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      z-index: 20;
+      font-size: 13px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      max-width: min(760px, 95vw);
+    }
+
+    #infoBoardTop {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 26;
+      min-width: min(560px, 94vw);
+      text-align: center;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      display: none;
+    }
+
+    #imageOverlay {
+      width: 100%;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(7, 12, 22, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-sizing: border-box;
+      display: none;
+    }
+
+    #overlayImage {
+      width: 100%;
+      display: block;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">Status: Target-аа scan хийхэд Start trigger автоматаар эхэлнэ.</div>
+  <div id="infoBoardTop">
+    <span id="infoTextTop">Info board: Tap hiisnii daraa medeelel garna.</span>
+  </div>
+  <div id="uiPanel">
+    <div id="controls">
+      <button id="tapBtn" type="button" disabled>Tap object A</button>
+      <button id="nextBtn" type="button" disabled>Next</button>
+      <button id="showImageBtn" type="button" disabled>Show image</button>
+    </div>
+    <div id="imageOverlay">
+      <img id="overlayImage" src="assets/ekoc.jpeg" alt="Product image" />
+    </div>
+  </div>
+
+  <a-scene
+    mindar-image="imageTargetSrc: assets/targets.mind;"
+    color-space="sRGB"
+    renderer="colorManagement: true, physicallyCorrectLights"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false"
+  >
+    <a-assets>
+      <img id="infoImage" src="assets/ekoc.jpeg" />
+      <img id="feature1Image" src="assets/OIP.webp" />
+      <img id="feature2Image" src="assets/OIP (1).webp" />
+      <img id="warningImage" src="assets/imag_e.webp" />
+      <video id="promoVideo" src="assets/video.mp4" preload="auto" loop playsinline crossorigin="anonymous"></video>
+      <a-asset-item id="modelMain" src="assets/ekoc.glb"></a-asset-item>
+      <a-asset-item id="modelSupport" src="assets/water1.glb"></a-asset-item>
+    </a-assets>
+
+    <a-camera id="cam" position="0 0 0" look-controls="enabled:false">
+      <a-entity id="mouseCursor" cursor="rayOrigin: mouse; fuse: false" raycaster="objects: .clickable; far: 20"></a-entity>
+    </a-camera>
+
+    <a-entity id="targetRoot" mindar-image-target="targetIndex: 0">
+      <a-entity id="welcomePanel" position="0 0.54 0.05" visible="false">
+        <a-plane width="1" height="0.24" color="#0f172a" opacity="0.95"></a-plane>
+        <a-plane width="0.94" height="0.18" color="#1e293b" opacity="0.72" position="0 0 0.01"></a-plane>
+        <a-text value="Tavtai Moril!\nInteractive AR Tour" align="center" width="1.08" color="#f8fafc" position="0 0.01 0.02"></a-text>
+      </a-entity>
+
+      <a-video
+        id="startVideoPanel"
+        src="#promoVideo"
+        position="0 0.26 0.06"
+        width="0.56"
+        height="0.31"
+        opacity="0"
+        visible="false"
+      ></a-video>
+
+      <a-gltf-model
+        id="mainModel"
+        class="clickable"
+        src="#modelMain"
+        position="0 -0.1 0.22"
+        scale="0.16 0.16 0.16"
+        rotation="0 8 0"
+        visible="false"
+      ></a-gltf-model>
+
+      <a-gltf-model
+        id="supportModel"
+        src="#modelSupport"
+        position="0 -0.1 0.22"
+        scale="0.16 0.16 0.16"
+        rotation="0 -8 0"
+        visible="false"
+      ></a-gltf-model>
+
+      <a-video
+        id="nextVideoPanel"
+        src="#promoVideo"
+        position="0.38 0.03 0.08"
+        width="0.62"
+        height="0.35"
+        opacity="0"
+        visible="false"
+      ></a-video>
+    </a-entity>
+
+    <a-light type="ambient" intensity="0.9"></a-light>
+    <a-light type="directional" intensity="0.8" position="0 1 1"></a-light>
+  </a-scene>
+
+  <script>
+    const targetRoot = document.querySelector("#targetRoot");
+    const cam = document.querySelector("#cam");
+    const promoVideo = document.querySelector("#promoVideo");
+
+    const welcomePanel = document.querySelector("#welcomePanel");
+    const startVideoPanel = document.querySelector("#startVideoPanel");
+    const mainModel = document.querySelector("#mainModel");
+    const supportModel = document.querySelector("#supportModel");
+
+    const infoBoard = document.querySelector("#infoBoardTop");
+    const infoText = document.querySelector("#infoTextTop");
+    const imageOverlay = document.querySelector("#imageOverlay");
+    const overlayImage = document.querySelector("#overlayImage");
+    const nextVideoPanel = document.querySelector("#nextVideoPanel");
+
+    const tapBtn = document.querySelector("#tapBtn");
+    const nextBtn = document.querySelector("#nextBtn");
+    const showImageBtn = document.querySelector("#showImageBtn");
+    const statusEl = document.querySelector("#status");
+
+    const targetPos = new THREE.Vector3();
+    const camPos = new THREE.Vector3();
+
+    let targetVisible = false;
+    let tapped = false;
+    let imageVisible = false;
+    let imageInfoStep = 0;
+    let imageSrcStep = 0;
+    const imageInfoMessages = [
+      "Feature 1: Energy-saving mode enabled.",
+      "Feature 2: Auto calibration in 3 seconds.",
+      "Warning: High heat zone. Keep distance."
+    ];
+    const imageCycleSources = [
+      "assets/OIP.webp",
+      "assets/OIP (1).webp",
+      "assets/imag_e.webp"
+    ];
+
+    function setStatus(text) {
+      statusEl.textContent = `Status: ${text}`;
+    }
+
+    function bindTap(el, handler) {
+      el.addEventListener("click", handler);
+      el.addEventListener("touchstart", (event) => {
+        event.preventDefault();
+        handler(event);
+      }, { passive: false });
+    }
+
+    function playStartBeep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.value = 540;
+        gain.gain.value = 0.06;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.22);
+      } catch (_) {}
+    }
+
+    function resetScene() {
+      tapped = false;
+      tapBtn.disabled = true;
+      nextBtn.disabled = true;
+      showImageBtn.disabled = true;
+      imageVisible = false;
+      imageInfoStep = 0;
+      imageSrcStep = 0;
+      mainModel.classList.add("clickable");
+
+      welcomePanel.setAttribute("visible", false);
+      startVideoPanel.setAttribute("visible", false);
+      infoBoard.style.display = "none";
+      nextVideoPanel.setAttribute("visible", false);
+
+      startVideoPanel.setAttribute("opacity", 0);
+      nextVideoPanel.setAttribute("opacity", 0);
+
+      mainModel.setAttribute("visible", false);
+      supportModel.setAttribute("visible", false);
+      imageOverlay.style.display = "none";
+
+      mainModel.removeAttribute("animation__tapRotate");
+      mainModel.removeAttribute("animation__tapMove");
+      mainModel.removeAttribute("animation__tapScale");
+      mainModel.removeAttribute("animation__highlight");
+      supportModel.removeAttribute("animation__splitMove");
+      supportModel.removeAttribute("animation__highlight");
+      mainModel.setAttribute("position", "0 -0.1 0.22");
+      mainModel.setAttribute("scale", "0.16 0.16 0.16");
+      mainModel.setAttribute("rotation", "0 8 0");
+
+      supportModel.setAttribute("position", "0 -0.1 0.22");
+      supportModel.setAttribute("scale", "0.16 0.16 0.16");
+      supportModel.setAttribute("rotation", "0 -8 0");
+
+      promoVideo.pause();
+      promoVideo.currentTime = 0;
+      infoText.textContent = "Info board: Tap hiisnii daraa medeelel garna.";
+      overlayImage.setAttribute("src", "assets/ekoc.jpeg");
+    }
+
+    function runTapObjectA() {
+      if (!targetVisible || tapped) {
+        return;
+      }
+
+      tapped = true;
+      mainModel.classList.remove("clickable");
+      nextBtn.disabled = false;
+      showImageBtn.disabled = false;
+      setStatus("Tap object A: Rotate/Move/Scale animation ажиллаж байна...");
+
+      mainModel.setAttribute("animation__tapRotate", {
+        property: "rotation",
+        from: "0 8 0",
+        to: "0 368 0",
+        dur: 2000,
+        easing: "easeInOutQuad"
+      });
+      mainModel.setAttribute("animation__tapMove", {
+        property: "position",
+        from: "0 -0.1 0.22",
+        to: "-0.08 -0.08 0.24",
+        dur: 2000,
+        easing: "easeInOutQuad"
+      });
+      mainModel.setAttribute("animation__tapScale", {
+        property: "scale",
+        from: "0.16 0.16 0.16",
+        to: "0.23 0.23 0.23",
+        dur: 2000,
+        easing: "easeInOutQuad"
+      });
+      supportModel.setAttribute("animation__splitMove", {
+        property: "position",
+        from: "0 -0.1 0.22",
+        to: "0.08 -0.12 0.24",
+        dur: 2000,
+        easing: "easeInOutQuad"
+      });
+
+      window.setTimeout(() => {
+        if (!targetVisible) {
+          return;
+        }
+        infoBoard.style.display = "block";
+        setStatus("Info board гарлаа. Next дарж үргэлжлүүлнэ үү.");
+      }, 2000);
+    }
+
+    targetRoot.addEventListener("targetFound", () => {
+      targetVisible = true;
+      resetScene();
+
+      welcomePanel.setAttribute("visible", true);
+      welcomePanel.setAttribute("animation__welcomeMove", {
+        property: "position",
+        from: "0 0.7 0.05",
+        to: "0 0.54 0.05",
+        dur: 1000,
+        easing: "easeOutCubic"
+      });
+      welcomePanel.setAttribute("animation__welcomeFade", {
+        property: "opacity",
+        from: 0,
+        to: 1,
+        dur: 1000
+      });
+
+      mainModel.setAttribute("visible", true);
+      supportModel.setAttribute("visible", true);
+
+      playStartBeep();
+
+      tapBtn.disabled = false;
+      setStatus("Start: Welcome + 2 модел гарлаа. Tap object A хийнэ үү.");
+    });
+
+    targetRoot.addEventListener("targetLost", () => {
+      targetVisible = false;
+      promoVideo.pause();
+      setStatus("Target алдагдлаа. Дахин scan хийнэ үү.");
+    });
+
+    bindTap(mainModel, runTapObjectA);
+    bindTap(tapBtn, runTapObjectA);
+
+    bindTap(showImageBtn, () => {
+      if (!targetVisible || !tapped) {
+        setStatus("Эхлээд Tap object A хийж зураг гаргана уу.");
+        return;
+      }
+      imageVisible = true;
+      imageInfoStep = 0;
+      imageSrcStep = 0;
+      imageOverlay.style.display = "block";
+      overlayImage.setAttribute("src", "assets/ekoc.jpeg");
+      infoText.textContent = "Зураг гарлаа. Зураг дээр дарж мэдээллийг солино.";
+      setStatus("Зураг гарлаа. Дээр нь дарж Feature мэдээллүүдийг ээлжлэн хараарай.");
+    });
+
+    nextBtn.addEventListener("click", () => {
+      if (!targetVisible || !tapped) {
+        setStatus("Эхлээд Tap object A хийж үргэлжлүүлнэ үү.");
+        return;
+      }
+
+      startVideoPanel.setAttribute("visible", false);
+      nextVideoPanel.setAttribute("src", "#promoVideo");
+      nextVideoPanel.setAttribute("visible", true);
+      nextVideoPanel.setAttribute("position", "0.62 0.03 0.08");
+      nextVideoPanel.setAttribute("animation__show", {
+        property: "opacity",
+        from: 0,
+        to: 1,
+        dur: 500
+      });
+      nextVideoPanel.setAttribute("animation__slideIn", {
+        property: "position",
+        from: "0.62 0.03 0.08",
+        to: "0.38 0.03 0.08",
+        dur: 500,
+        easing: "easeOutCubic"
+      });
+
+      promoVideo.muted = true;
+      promoVideo.currentTime = 0;
+      promoVideo.play().catch(() => {
+        setStatus("Бичлэг эхлүүлж чадсангүй. Дахин Next дарна уу.");
+      });
+      setStatus("Next OK: бичлэг гарч тоглож эхэллээ.");
+    });
+
+    bindTap(overlayImage, () => {
+      if (!targetVisible || !tapped || !imageVisible) {
+        return;
+      }
+      const index = imageInfoStep % imageInfoMessages.length;
+      infoText.textContent = imageInfoMessages[index];
+      overlayImage.setAttribute("src", imageCycleSources[imageSrcStep % imageCycleSources.length]);
+      imageInfoStep += 1;
+      imageSrcStep += 1;
+      setStatus("Зургийн мэдээлэл шинэчлэгдлээ.");
+    });
+  </script>
+</body>
+</html>
