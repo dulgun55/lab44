@@ -1,0 +1,202 @@
+﻿<!DOCTYPE html>
+<html lang="mn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab 4 - AR Surface Placement</title>
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: "Segoe UI", sans-serif;
+      background: #0d1117;
+      color: #f8fafc;
+    }
+
+    #status {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      z-index: 20;
+      font-size: 13px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      max-width: min(760px, 95vw);
+    }
+
+    #enter-ar {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 20;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      background: #22c55e;
+      color: #04130a;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    #enter-ar:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+  </style>
+</head>
+<body>
+  <button id="enter-ar" type="button">Start AR</button>
+  <div id="status">Status: Start AR дарж камер асаана. Гадаргуу илрэхээр дэлгэц дээр дарж объект байрлуулна.</div>
+
+  <a-scene
+    id="scene"
+    color-space="sRGB"
+    renderer="colorManagement: true, physicallyCorrectLights, alpha: true"
+    webxr="requiredFeatures: hit-test, local-floor; optionalFeatures: dom-overlay; overlayElement: body;"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false"
+    ar-session-handler
+  >
+    <a-assets>
+      <a-asset-item id="ekocModel" src="assets/ekoc.glb"></a-asset-item>
+    </a-assets>
+
+    <a-camera id="cam" position="0 1.6 0" look-controls="enabled:false"></a-camera>
+
+    <a-entity
+      id="reticle"
+      visible="false"
+      geometry="primitive: ring; radiusInner: 0.07; radiusOuter: 0.09"
+      material="color: #00e676; shader: flat; opacity: 0.9"
+      rotation="-90 0 0"
+    ></a-entity>
+
+    <a-gltf-model
+      id="mainModel"
+      src="#ekocModel"
+      visible="false"
+      scale="0.15 0.15 0.15"
+    ></a-gltf-model>
+
+    <a-light type="ambient" intensity="0.95"></a-light>
+    <a-light type="directional" intensity="0.7" position="0 1 1"></a-light>
+  </a-scene>
+
+  <script>
+    const statusEl = document.querySelector("#status");
+    const sceneEl = document.querySelector("#scene");
+    const enterArBtn = document.querySelector("#enter-ar");
+    const reticleEl = document.querySelector("#reticle");
+    const mainModel = document.querySelector("#mainModel");
+
+    function setStatus(text) {
+      statusEl.textContent = `Status: ${text}`;
+    }
+
+    AFRAME.registerComponent("ar-session-handler", {
+      init: function () {
+        this.hitTestSource = null;
+        this.referenceSpace = null;
+        this.viewerSpace = null;
+        this.renderer = null;
+        this.session = null;
+
+        this.onSessionStart = this.onSessionStart.bind(this);
+        this.onSessionEnd = this.onSessionEnd.bind(this);
+        this.onSelect = this.onSelect.bind(this);
+
+        this.el.addEventListener("renderstart", () => {
+          this.renderer = this.el.renderer;
+          this.renderer.xr.addEventListener("sessionstart", this.onSessionStart);
+          this.renderer.xr.addEventListener("sessionend", this.onSessionEnd);
+        });
+      },
+
+      onSessionStart: async function () {
+        this.session = this.renderer.xr.getSession();
+        this.referenceSpace = this.renderer.xr.getReferenceSpace();
+        this.viewerSpace = await this.session.requestReferenceSpace("viewer");
+        this.hitTestSource = await this.session.requestHitTestSource({ space: this.viewerSpace });
+        this.session.addEventListener("select", this.onSelect);
+        setStatus("Камер аслаа. Гадаргуу хайж байна...");
+      },
+
+      onSessionEnd: function () {
+        if (this.hitTestSource) {
+          this.hitTestSource.cancel();
+          this.hitTestSource = null;
+        }
+        this.viewerSpace = null;
+        this.referenceSpace = null;
+        this.session = null;
+        reticleEl.setAttribute("visible", false);
+        setStatus("AR session дууслаа.");
+      },
+
+      onSelect: function () {
+        if (!reticleEl.getAttribute("visible")) {
+          return;
+        }
+
+        const worldPos = new THREE.Vector3();
+        const worldQuat = new THREE.Quaternion();
+        reticleEl.object3D.getWorldPosition(worldPos);
+        reticleEl.object3D.getWorldQuaternion(worldQuat);
+
+        mainModel.object3D.position.copy(worldPos);
+        mainModel.object3D.quaternion.copy(worldQuat);
+        mainModel.setAttribute("visible", true);
+        setStatus("Объект байрлалаа. Дахин дарвал шинэ байрлалд шилжинэ.");
+      },
+
+      tick: function (time, delta, xrFrame) {
+        if (!xrFrame || !this.hitTestSource || !this.referenceSpace) {
+          return;
+        }
+
+        const hits = xrFrame.getHitTestResults(this.hitTestSource);
+        if (!hits.length) {
+          reticleEl.setAttribute("visible", false);
+          return;
+        }
+
+        const pose = hits[0].getPose(this.referenceSpace);
+        if (!pose) {
+          reticleEl.setAttribute("visible", false);
+          return;
+        }
+
+        reticleEl.setAttribute("visible", true);
+        reticleEl.object3D.matrix.fromArray(pose.transform.matrix);
+        reticleEl.object3D.matrix.decompose(
+          reticleEl.object3D.position,
+          reticleEl.object3D.quaternion,
+          reticleEl.object3D.scale
+        );
+      }
+    });
+
+    enterArBtn.addEventListener("click", async () => {
+      if (!navigator.xr) {
+        setStatus("Энэ төхөөрөмж WebXR AR дэмжихгүй байна.");
+        enterArBtn.disabled = true;
+        return;
+      }
+
+      try {
+        await sceneEl.enterAR();
+      } catch (error) {
+        setStatus(`AR эхлүүлэхэд алдаа гарлаа: ${error.message}`);
+      }
+    });
+
+    mainModel.addEventListener("model-loaded", () => {
+      setStatus("Model ачааллаа. Start AR дарна уу.");
+    });
+  </script>
+</body>
+</html>
